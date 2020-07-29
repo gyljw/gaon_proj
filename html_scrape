@@ -1,0 +1,101 @@
+from requests import get
+from bs4 import BeautifulSoup
+import pandas as pd
+from time import sleep
+from random import randint
+from time import time
+from IPython.core.display import clear_output
+from warnings import warn
+
+start_time = time()
+requests = 0
+
+url = 'http://gaonchart.co.kr/main/section/chart/online.gaon?nationGbn=T&serviceGbn=ALL&targetTime=01&hitYear=2020&termGbn=month'
+response2 = get(url)
+print(response2.text[:500])
+
+soup = BeautifulSoup(response2.text, 'html.parser')
+type(soup)
+
+chart_dt = soup.find_all('option')
+dt_lst = []
+
+rank_lst = []
+title_lst = []
+artist_lst = []
+album_lst = []
+score_lst = []
+prd_lst = []
+dist_lst = []
+curr_mth = []
+
+for dt in chart_dt:
+    if dt.text[0] == '2':
+        yr = dt.text[:4]
+        mth = dt.text[-3:-1]
+        dt_lst.append(yr + mth)
+
+for i in dt_lst:
+    response = get('http://gaonchart.co.kr/main/section/chart/online.gaon?nationGbn=T&serviceGbn=ALL&targetTime='+i[-2:]+'&hitYear='+i[:4]+'&termGbn=month')
+    sleep(randint(8,15))
+    
+    requests += 1
+    elapsed_time = time() - start_time
+    print('Request: {}; Frequency: {} requests/s'.format(requests, requests/elapsed_time))
+    clear_output(wait = True)
+    
+    if response.status_code != 200:
+        warn('Request: {}; Status code: {}'.format(requests, response.status_code))
+
+    if requests > 1000:
+        warn('Number of requests was greater than expected.')
+        break
+    
+    html_soup = BeautifulSoup(response.text, 'html.parser')
+    type(html_soup)
+
+    gaon_containers = html_soup.find_all('tr')
+    
+    for container in gaon_containers:
+        if container.find('td', class_ = 'ranking') is not None:
+            curr_mth.append(i)
+
+            gaon_rank = container.find('td', class_ = 'ranking').text
+            rank_lst.append(gaon_rank)
+
+            title = container.find('td', class_ = 'subject').p.text
+            title_lst.append(title)
+
+            artist = container.find('p', class_ = 'singer').text.split('|')[0]
+            artist_lst.append(artist)
+
+            album = container.find('p', class_ = 'singer').text.split('|')[1]
+            album_lst.append(album)
+
+            if container.find('td', class_ = 'count') is not None:
+                score = int(container.find('td', class_ = 'count').p.text.replace(',',''))
+                score_lst.append(score)
+                
+            else:
+                score = 'NA'
+                score_lst.append(score)
+
+            producer = container.find('p', class_ = 'pro').text
+            prd_lst.append(producer)
+
+            dist = container.find('p', class_ = 'dist').text
+            dist_lst.append(dist)
+            
+gaon_chart_mth = pd.DataFrame({'curr_mth': curr_mth,
+'gaon_rank': rank_lst,
+'song title': title_lst,
+'artist': artist_lst,
+'album': album_lst,
+'score': score_lst,
+'producer': prd_lst,
+'dist': dist_lst
+})
+print(gaon_chart_mth.info())
+gaon_chart_mth.head(100)
+
+gaon_chart_mth.to_csv('gaon_chart_mthly.csv')
